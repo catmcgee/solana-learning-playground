@@ -382,12 +382,23 @@ const Monaco = () => {
     };
     const renameItem = PgExplorer.onDidRenameItem(disposeModelsFromPath);
     const deleteItem = PgExplorer.onDidDeleteItem(disposeModelsFromPath);
+    const changeFileContent = PgExplorer.onDidChangeFileContent(
+      ({ path, content }) => {
+        const model = monaco.editor
+          .getModels()
+          .find((candidate) => candidate.uri.path === path);
+        if (model && model.getValue() !== content) {
+          model.setValue(content);
+        }
+      }
+    );
 
     return () => {
       clearInterval(positionDataIntervalId);
       switchFile.dispose();
       renameItem.dispose();
       deleteItem.dispose();
+      changeFileContent.dispose();
       monaco.editor.getModels().forEach((model) => model.dispose());
     };
   }, [editor]);

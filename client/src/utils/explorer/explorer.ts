@@ -207,6 +207,7 @@ export class PgExplorer {
     // Ordering of `indexedDB` calls and state calls matter. If `indexedDB` call fails,
     // state will not change. Can't say the same if the ordering was in reverse.
     if (itemType.file) {
+      const previousContent = files[fullPath]?.content;
       if (!this.isTemporary) {
         await this.fs.writeFile(fullPath, content, { createParents: true });
       }
@@ -215,6 +216,13 @@ export class PgExplorer {
         content,
         meta: files[fullPath]?.meta ?? {},
       };
+
+      if (opts?.override && previousContent !== content) {
+        PgCommon.createAndDispatchCustomEvent(
+          this.events.ON_DID_CHANGE_FILE_CONTENT,
+          { path: fullPath, content }
+        );
+      }
 
       if (!opts?.openOptions || opts?.openOptions?.onlyRefreshIfAlreadyOpen) {
         const isCurrentFile = this.currentFilePath === fullPath;

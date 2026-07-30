@@ -189,6 +189,8 @@ const LearningShell = () => {
   });
   const [chatInput, setChatInput] = useState("");
   const [chatting, setChatting] = useState(false);
+  const [patchApplying, setPatchApplying] = useState(false);
+  const patchApplyingRef = useRef(false);
   const [networkBusy, setNetworkBusy] = useState(false);
   const [surfpoolConnected, setSurfpoolConnected] = useState(false);
   const [rpcEndpoint, setRpcEndpoint] = useState(
@@ -1617,40 +1619,80 @@ const LearningShell = () => {
   );
 
   const applyPatch = async () => {
-    if (!patch) return;
+    if (!patch || patchApplyingRef.current) return;
+    patchApplyingRef.current = true;
+    setPatchApplying(true);
+    const pendingPatch = patch;
     const undoMessageId = randomId();
-    const previous = patch.files.map(({ path }) => ({
+    const previous = pendingPatch.files.map(({ path }) => ({
       path,
       content: PgExplorer.getFileContent(path),
     }));
-    for (const file of patch.files) {
-      await PgExplorer.createItem(file.path, file.content, {
-        override: true,
-      });
+    try {
+      for (const file of pendingPatch.files) {
+        await PgExplorer.createItem(file.path, file.content, {
+          override: true,
+        });
+        const savedContent = PgExplorer.getFileContent(file.path);
+        const persistedContent = PgExplorer.isTemporary
+          ? savedContent
+          : await PgExplorer.fs.readToString(file.path);
+        if (
+          savedContent !== file.content ||
+          persistedContent !== file.content
+        ) {
+          throw new Error(`${file.path} did not save correctly.`);
+        }
+      }
+      setUndoFiles(previous);
+      setPatch(null);
+      setProgramStage("source");
+      setMessages((current) => [
+        ...current.map((message) =>
+          message.action === "undo-workspace-change"
+            ? { ...message, actionAvailable: false }
+            : message
+        ),
+        {
+          id: undoMessageId,
+          role: "system",
+          text: "Change applied to your workspace.",
+          action: "undo-workspace-change",
+          actionAvailable: true,
+        },
+      ]);
+      addEvent(
+        "idea",
+        "Tutor change applied",
+        "The saved files and open editor were updated. The Undo action stays beside the change in your conversation.",
+        "success"
+      );
+    } catch (error: any) {
+      for (const file of [...previous].reverse()) {
+        try {
+          if (file.content === undefined) {
+            if (PgExplorer.getFile(file.path)) {
+              await PgExplorer.deleteItem(file.path);
+            }
+          } else {
+            await PgExplorer.createItem(file.path, file.content, {
+              override: true,
+            });
+          }
+        } catch {
+          // Keep the original save error as the actionable failure.
+        }
+      }
+      addEvent(
+        "idea",
+        "Tutor change could not be applied",
+        error?.message ?? "The workspace files could not be updated.",
+        "error"
+      );
+    } finally {
+      patchApplyingRef.current = false;
+      setPatchApplying(false);
     }
-    setUndoFiles(previous);
-    setPatch(null);
-    setProgramStage("source");
-    setMessages((current) => [
-      ...current.map((message) =>
-        message.action === "undo-workspace-change"
-          ? { ...message, actionAvailable: false }
-          : message
-      ),
-      {
-        id: undoMessageId,
-        role: "system",
-        text: "Change applied to your workspace.",
-        action: "undo-workspace-change",
-        actionAvailable: true,
-      },
-    ]);
-    addEvent(
-      "idea",
-      "Tutor change applied",
-      "The workspace was updated. The Undo action stays beside the change in your conversation.",
-      "success"
-    );
   };
 
   const undoPatch = async (messageId: string) => {
@@ -2711,8 +2753,8 @@ const LearningShell = () => {
                 </PatchFiles>
                 <PatchActions>
                   <button onClick={() => setPatch(null)}>Not now</button>
-                  <PrimaryButton onClick={applyPatch}>
-                    Apply change
+                  <PrimaryButton onClick={applyPatch} disabled={patchApplying}>
+                    {patchApplying ? "Applying…" : "Apply change"}
                   </PrimaryButton>
                 </PatchActions>
               </PatchCard>
