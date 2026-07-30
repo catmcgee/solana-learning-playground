@@ -37,6 +37,16 @@ let state: AsyncMethods<WorldState>;
  * @returns a disposable to dispose all events
  */
 export const initRustAnalyzer = async (): Promise<Disposable> => {
+  if (
+    !globalThis.crossOriginIsolated ||
+    typeof globalThis.SharedArrayBuffer === "undefined"
+  ) {
+    console.warn(
+      "Rust Analyzer is unavailable because this page is not cross-origin isolated."
+    );
+    return { dispose: () => undefined };
+  }
+
   // Creating thread pool with `wasm-bindgen-rayon` sometimes hangs forever for
   // unknown reasons. Retry until success in order to mitigate this problem.
   // The try interval should take into account the initial download time of the
