@@ -1,0 +1,305 @@
+const webpack = require("webpack");
+const MonacoWebpackPlugin = require("monaco-editor-webpack-plugin");
+const CircularDependencyPlugin = require("circular-dependency-plugin");
+const fs = require("fs");
+const path = require("path");
+const { execSync } = require("child_process");
+
+module.exports = {
+  webpack: {
+    configure: (webpackConfig) => {
+      // Resolve WASM and CommonJS
+      webpackConfig.resolve.extensions.push(".wasm");
+      webpackConfig.experiments = {
+        asyncWebAssembly: true,
+      };
+      webpackConfig.module.rules.forEach((rule) => {
+        (rule.oneOf ?? []).forEach((oneOf) => {
+          if (oneOf.type === "asset/resource") {
+            // Including .cjs here solves `nanoid is not a function`
+            oneOf.exclude.push(/\.wasm$/, /\.cjs$/);
+          } else if (new RegExp(oneOf.test).test(".d.ts")) {
+            // Exclude declaration files from being loaded by babel
+            oneOf.exclude = [/\.d\.ts$/];
+          }
+        });
+      });
+
+      webpackConfig.module.rules.push(
+        // Fix process error on @lezer/lr
+        {
+          test: /@lezer\/lr\/dist\/\w+\.js$/,
+          resolve: { fullySpecified: false },
+        },
+
+        // Raw imports
+        {
+          test: /\.(d\.ts|raw|rs|py|md|toml)$/,
+          type: "asset/source",
+        },
+
+        // Resource query
+        {
+          resourceQuery: /resource/,
+          type: "asset/resource",
+        }
+      );
+
+      // Resolve node polyfills
+      webpackConfig.resolve.fallback = {
+        // Mocha
+        stream: require.resolve("stream-browserify"),
+
+        // Fix `Module not found: Error: Can't resolve 'perf_hooks'` from typescript
+        perf_hooks: false,
+
+        // @metaplex-foundation/js polyfills
+        crypto: require.resolve("crypto-browserify"),
+        fs: false,
+        process: false,
+        path: false,
+        zlib: false,
+      };
+
+      // Plugins
+      webpackConfig.plugins.push(
+        // Buffer
+        new webpack.ProvidePlugin({ Buffer: ["buffer", "Buffer"] }),
+
+        // Process
+        new webpack.ProvidePlugin({
+          process: "process/browser",
+        }),
+
+        // Monaco
+        new MonacoWebpackPlugin(),
+
+        // Circular dependencies
+        new CircularDependencyPlugin({
+          // TODO: Avoid excluding so many or be more specific
+          exclude:
+            /node_modules|connection|explorer|playnet|sugar|terminal|Instruction/,
+          // Include all src folder
+          include: /src/,
+          // Add errors to webpack instead of warnings
+          failOnError: true,
+          // Allow import cycles that include an asynchronous import,
+          // e.g. via import(/* webpackMode: "weak" */ './file.js')
+          allowAsyncCycles: false,
+          // Set the current working directory for displaying module paths
+          cwd: process.cwd(),
+        }),
+
+        // Ignore `Critical dependency: the request of a dependency is an expression`
+        // from typescript and mocha
+        new webpack.ContextReplacementPlugin(/^\.$/, (context) => {
+          if (/\/node_modules\/(typescript|mocha)\/lib/.test(context.context)) {
+            for (const d of context.dependencies) {
+              if (d.critical) d.critical = false;
+            }
+          }
+        }),
+
+        // Define globals
+        new webpack.DefinePlugin({
+          /** Setting info */
+          GLOBAL_SETTINGS: (() => {
+            const settingsPath = path.join("src", "settings");
+            const settingsStr = execSync(
+              `yarn run tsx ${settingsPath} --no-warnings`,
+              { env: { ...process.env, NODE_NO_WARNINGS: 1 } }
+            )
+              .toString()
+              .split("---DEFAULT_SETTINGS---")
+              .at(1);
+            if (!settingsStr) throw new Error("Settings not found");
+
+            const settings = JSON.parse(settingsStr);
+
+            const defaultSettings = settings.reduce((acc, cur) => {
+              if (cur.default === undefined) return acc;
+
+              const accessor = cur.id.split(".");
+              accessor.reduce((obj, field, i) => {
+                if (i === accessor.length - 1) obj[field] = cur.default;
+                else obj[field] ??= {};
+                return obj[field];
+              }, acc);
+
+              return acc;
+            }, {});
+
+            const migrations = settings.reduce((acc, cur) => {
+              if (cur.migrate) {
+                const froms = Array.isArray(cur.migrate.from)
+                  ? cur.migrate.from
+                  : [cur.migrate.from];
+                for (const from of froms) acc.push({ from, to: cur.id });
+              }
+
+              return acc;
+            }, []);
+
+            return JSON.stringify({
+              default: defaultSettings,
+              migrations,
+            });
+          })(),
+
+          /** All supported crates(Rust Analyzer) */
+          CRATES: defineFromPublicDir("crates", (dirItems) => {
+            const importable = Object.keys(
+              JSON.parse(
+                fs.readFileSync(path.join("..", "supported-crates.json"))
+              )
+            ).map((name) => name.replaceAll("-", "_"));
+
+            const transitive = dirItems
+              .filter((name) => name.endsWith(".toml"))
+              .map((name) => name.replace(".toml", ""))
+              .filter((name) => !importable.includes(name));
+
+            return { importable, transitive };
+          }),
+
+          /** Supported packages(TypeScript) */
+          PACKAGES: fs.readFileSync(
+            path.join("..", "supported-packages.json"),
+            "utf8"
+          ),
+
+          /** Array of all markdown tutorial data */
+          MARKDOWN_TUTORIALS: defineFromPublicDir(
+            "tutorials",
+            (dirItems, tutorialsPath) => {
+              return dirItems
+                .filter((tutorialName) => !tutorialName.startsWith("_"))
+                .map((tutorialName) => {
+                  const tutorialDir = path.join(tutorialsPath, tutorialName);
+                  const tutorialDirItems = fs.readdirSync(tutorialDir);
+                  const tutorialDataFileName = tutorialDirItems.find(
+                    (name) => name === "data.json"
+                  );
+                  if (!tutorialDataFileName) return null;
+
+                  const data = JSON.parse(
+                    fs.readFileSync(
+                      path.join(tutorialDir, tutorialDataFileName)
+                    )
+                  );
+                  data.pageCount = fs.readdirSync(
+                    path.join(tutorialDir, "pages")
+                  ).length;
+                  data.unixTimestamp = execSync(
+                    "git log --follow --format=%ad --date=unix --diff-filter=A .",
+                    { cwd: tutorialDir }
+                  )
+                    .toString()
+                    .split("\n")
+                    .filter(Boolean)
+                    .pop();
+
+                  const thumbnailFileName = tutorialDirItems.find((name) =>
+                    name.startsWith("thumbnail")
+                  );
+                  if (thumbnailFileName) data.thumbnail ??= thumbnailFileName;
+
+                  return data;
+                })
+                .filter(Boolean);
+            }
+          ),
+
+          /** Map of kebab-case tutorial names to necessary custom tutorial data */
+          CUSTOM_TUTORIALS: defineFromPublicDir(
+            "tutorials",
+            (dirItems, tutorialsPath) => {
+              return dirItems.reduce((acc, tutorialName) => {
+                const tutorialDir = path.join(tutorialsPath, tutorialName);
+                const tutorialDirItems = fs.readdirSync(tutorialDir);
+                const tutorialDataFileName = tutorialDirItems.find(
+                  (name) => name === "data.json"
+                );
+                if (tutorialDataFileName) return acc;
+
+                acc[tutorialName] ??= {};
+
+                // Thumbnail
+                const thumbnailFileName = tutorialDirItems.find((name) =>
+                  name.startsWith("thumbnail")
+                );
+                if (thumbnailFileName)
+                  acc[tutorialName].thumbnail = thumbnailFileName;
+
+                // Page count
+                const pagesDirs = [
+                  path.join(tutorialDir, "pages"),
+                  path.join("src", "tutorials", tutorialName, "pages"),
+                ];
+                for (const pagesDir of pagesDirs) {
+                  if (fs.existsSync(pagesDir)) {
+                    acc[tutorialName].pageCount =
+                      fs.readdirSync(pagesDir).length;
+                    break;
+                  }
+                }
+                if (!acc[tutorialName].pageCount) {
+                  throw new Error("Unable to get tutorial page count");
+                }
+
+                return acc;
+              }, {});
+            }
+          ),
+        })
+      );
+
+      // Do not mangle class names that start with "_Pg" because decorators'
+      // main change event name is derived from the class name.
+      const terserPlugin = webpackConfig.optimization.minimizer[0];
+
+      // Decarators can be transpiled to either classses or functions, exclude
+      // all class/function names that start with "_Pg".
+      // See: https://github.com/terser/terser#minify-options-structure
+      terserPlugin.options.minimizer.options.keep_classnames = /^_Pg/;
+      terserPlugin.options.minimizer.options.keep_fnames = /^_Pg/;
+
+      // Ignore useless warnings
+      webpackConfig.ignoreWarnings = [
+        /Failed to parse source map/,
+
+        // https://github.com/GoogleChromeLabs/wasm-bindgen-rayon/issues/23
+        /Circular dependency between chunks with runtime/,
+      ];
+
+      return webpackConfig;
+    },
+  },
+
+  devServer: (devServerConfig) => {
+    devServerConfig.headers = {
+      ...devServerConfig.headers,
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Opener-Policy": "same-origin",
+    };
+
+    return devServerConfig;
+  },
+};
+
+/**
+ * Define global variable based on the items in `public` directory.
+ *
+ * @param {string} dirName directory name inside `public` directory
+ * @param {(dirItems: string[], path: string) => string} cb callback to run
+ * @returns the stringified result of the callback
+ */
+const defineFromPublicDir = (dirName, cb) => {
+  const publicPath = path.join("public", dirName);
+
+  if (!fs.existsSync(publicPath)) {
+    fs.mkdirSync(publicPath);
+  }
+
+  return JSON.stringify(cb(fs.readdirSync(publicPath), publicPath));
+};

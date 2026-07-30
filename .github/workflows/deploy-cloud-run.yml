@@ -1,0 +1,94 @@
+name: Deploy learning API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/deploy-cloud-run.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: learning-api-production
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID: solana-learning-playground
+  REGION: us-central1
+  SERVICE: solana-learning-playground-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/597771376676/locations/global/workloadIdentityPools/github/providers/solana-learning-playground
+          service_account: github-cloud-run-deployer@solana-learning-playground.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Build production image
+        run: |
+          IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$SERVICE:${GITHUB_SHA}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          BUILD_ID="$(
+            gcloud builds submit server \
+              --tag "$IMAGE" \
+              --project "$PROJECT_ID" \
+              --region "$REGION" \
+              --machine-type e2-highcpu-8 \
+              --timeout 3600 \
+              --async \
+              --format="value(id)" \
+              --quiet
+          )"
+
+          while true; do
+            STATUS="$(
+              gcloud builds describe "$BUILD_ID" \
+                --project "$PROJECT_ID" \
+                --region "$REGION" \
+                --format="value(status)"
+            )"
+            echo "Cloud Build $BUILD_ID: $STATUS"
+            case "$STATUS" in
+              SUCCESS)
+                break
+                ;;
+              FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED|EXPIRED)
+                gcloud builds describe "$BUILD_ID" \
+                  --project "$PROJECT_ID" \
+                  --region "$REGION" \
+                  --format="yaml(status,statusDetail,logUrl)"
+                exit 1
+                ;;
+            esac
+            sleep 15
+          done
+
+      - name: Deploy Cloud Run service
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE" \
+            --project "$PROJECT_ID" \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --cpu 4 \
+            --memory 16Gi \
+            --concurrency 20 \
+            --min 1 \
+            --max 1 \
+            --timeout 3600 \
+            --no-cpu-throttling \
+            --cpu-boost \
+            --set-env-vars "^@^PG_CLIENT_URLS=https://solana-learning-playground.vercel.app,http://localhost:3000,http://127.0.0.1:3000@PG_OPENAI_MODEL=gpt-5.6-sol@PG_BUILD_CONCURRENCY=1@PG_LEARNING_AI_DAILY_LIMIT=100@PG_LEARNING_SURFPOOL_LIMIT=2@PG_LEARNING_SURFPOOL_GLOBAL_LIMIT=8@PG_LEARNING_SURFPOOL_IDLE_MINUTES=30@PG_VERBOSE=true" \
+            --set-secrets "PG_OPENAI_API_KEY=solpg-openai-api-key:latest,PG_LEARNING_SESSION_SECRET=solpg-learning-session-secret:latest" \
+            --quiet

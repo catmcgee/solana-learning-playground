@@ -1,0 +1,38 @@
+# Dependencies
+*/node_modules
+**/target
+
+# Generated package imports
+**/js-runtime/package.ts
+
+# Generated TS files
+**/generated.ts
+
+# Production
+*/build
+
+# Misc
+.env
+*/deploy.sh
+
+*/npm-debug.log*
+*/yarn-debug.log*
+*/yarn-error.log*
+
+# Server
+server/packages/*
+!server/packages/package.json
+!server/packages/webpack.config.js
+!server/packages/yarn.lock
+server/programs/*
+!server/programs/Cargo.*
+!server/programs/default
+
+# WASM
+**/www
+.vercel
+.env*
+
+# Keep repository documentation private except for the public root README.
+**/*.md
+!/README.md

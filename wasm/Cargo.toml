@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "anchor-cli",
+    "seahorse-compile",
+    "solana-cli",
+    "solana-client",
+    "spl-token-cli",
+    "sugar-cli",
+    "utils/*",
+]
+exclude = ["playnet", "rust-analyzer"]
+resolver = "2"

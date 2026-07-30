@@ -1,0 +1,6 @@
+.gcloudignore
+.git
+.gitignore
+.env
+mongodb
+target

@@ -1,0 +1,15 @@
+name: CI
+
+# Validation gate for pushes to master and pull requests. Deployment is handled
+# separately by cicd.yml.
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+  workflow_dispatch:
+
+jobs:
+  checks:
+    uses: ./.github/workflows/reusable-checks.yml
