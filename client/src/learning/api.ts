@@ -100,8 +100,8 @@ export const streamTutor = async ({
           PgConnection.current.rpcEndpoint.includes("/surfpool/sessions/") ||
           PgCommon.appendSlash(PgConnection.current.rpcEndpoint) ===
             PgCommon.appendSlash(SURFPOOL_RPC_URL)
-          ? "isolated Surfpool"
-          : "not connected to managed Surfpool",
+            ? "isolated Surfpool"
+            : "not connected to managed Surfpool",
         walletAddress: PgWallet.current?.publicKey.toBase58() ?? null,
         walletBalanceSol: PgWallet.balance,
         programId: PgProgramInfo.pk?.toBase58() ?? null,

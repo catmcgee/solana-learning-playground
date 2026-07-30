@@ -787,15 +787,46 @@ const LearningShell = () => {
     return dispose;
   }, []);
 
+  // Deploy and interaction must keep the learner on the page so wallet and
+  // program state cannot cross workspaces; builds can continue in background.
+  const chainActionBlocks = (detail: string) => {
+    if (!chainActionRef.current || chainActionRef.current.action === "build") {
+      return false;
+    }
+    addEvent(
+      chainActionRef.current.action === "deploy" ? "deploy" : "instruction",
+      "Finish the current action first",
+      detail,
+      "idle"
+    );
+    return true;
+  };
+
+  const activateWorkspace = (
+    workspaceName: string,
+    tab: LearningLibraryTab
+  ) => {
+    localStorage.setItem(CUSTOM_WORKSPACE_KEY, workspaceName);
+    setCustomProgram(workspaceName);
+    setLibraryTab(tab);
+    activeWorkspaceNameRef.current = workspaceName;
+    setActiveWorkspaceName(workspaceName);
+    if (!workspaceStatesRef.current[workspaceName]) {
+      updateWorkspaceState(workspaceName, () =>
+        createWorkspaceLearningState(workspaceName)
+      );
+    }
+    setInteractionOpen(false);
+    setWalletOpen(false);
+  };
+
   const selectLesson = async (next: LearningExample) => {
     if (next.id === lessonId && !customProgram) return;
-    if (chainActionRef.current && chainActionRef.current.action !== "build") {
-      addEvent(
-        chainActionRef.current.action === "deploy" ? "deploy" : "instruction",
-        "Finish the current action first",
-        "You can switch lessons while a build runs. Deploy and interaction stay on this page so wallet and program state cannot cross workspaces.",
-        "idle"
-      );
+    if (
+      chainActionBlocks(
+        "You can switch lessons while a build runs. Deploy and interaction stay on this page so wallet and program state cannot cross workspaces."
+      )
+    ) {
       return;
     }
     setReady(false);
@@ -830,34 +861,21 @@ const LearningShell = () => {
   };
 
   const selectTutorial = async (tutorial: TutorialData) => {
-    if (chainActionRef.current && chainActionRef.current.action !== "build") {
-      addEvent(
-        chainActionRef.current.action === "deploy" ? "deploy" : "instruction",
-        "Finish the current action first",
-        "You can open another workspace while a build runs. Deploy and interaction stay attached to their current workspace.",
-        "idle"
-      );
+    if (
+      chainActionBlocks(
+        "You can open another workspace while a build runs. Deploy and interaction stay attached to their current workspace."
+      )
+    ) {
       return;
     }
 
     setReady(false);
     try {
       const workspaceName = await loadTutorialWorkspace(tutorial);
-      localStorage.setItem(CUSTOM_WORKSPACE_KEY, workspaceName);
       setImportedTutorialNames((current) =>
         current.includes(tutorial.name) ? current : [...current, tutorial.name]
       );
-      setCustomProgram(workspaceName);
-      setLibraryTab("tutorials");
-      activeWorkspaceNameRef.current = workspaceName;
-      setActiveWorkspaceName(workspaceName);
-      if (!workspaceStatesRef.current[workspaceName]) {
-        updateWorkspaceState(workspaceName, () =>
-          createWorkspaceLearningState(workspaceName)
-        );
-      }
-      setInteractionOpen(false);
-      setWalletOpen(false);
+      activateWorkspace(workspaceName, "tutorials");
       setMobilePanel("tutor");
       addEvent(
         "idea",
@@ -881,13 +899,11 @@ const LearningShell = () => {
   };
 
   const selectProgram = async (program: ProgramEntry) => {
-    if (chainActionRef.current && chainActionRef.current.action !== "build") {
-      addEvent(
-        chainActionRef.current.action === "deploy" ? "deploy" : "instruction",
-        "Finish the current action first",
-        "You can open another program while a build runs. Deploy and interaction stay attached to their current workspace.",
-        "idle"
-      );
+    if (
+      chainActionBlocks(
+        "You can open another program while a build runs. Deploy and interaction stay attached to their current workspace."
+      )
+    ) {
       return;
     }
 
@@ -895,21 +911,10 @@ const LearningShell = () => {
     try {
       await PgGithub.import(program.repo);
       const workspaceName = getProgramWorkspaceName(program);
-      localStorage.setItem(CUSTOM_WORKSPACE_KEY, workspaceName);
       setImportedProgramRepos((current) =>
         current.includes(program.repo) ? current : [...current, program.repo]
       );
-      setCustomProgram(workspaceName);
-      setLibraryTab("examples");
-      activeWorkspaceNameRef.current = workspaceName;
-      setActiveWorkspaceName(workspaceName);
-      if (!workspaceStatesRef.current[workspaceName]) {
-        updateWorkspaceState(workspaceName, () =>
-          createWorkspaceLearningState(workspaceName)
-        );
-      }
-      setInteractionOpen(false);
-      setWalletOpen(false);
+      activateWorkspace(workspaceName, "examples");
       setMobilePanel("code");
       addEvent(
         "idea",
@@ -936,13 +941,11 @@ const LearningShell = () => {
   const selectCustomProgram = async (program: CustomProgramEntry) => {
     const workspaceName = program.workspaceName;
     if (workspaceName === activeWorkspaceNameRef.current) return;
-    if (chainActionRef.current && chainActionRef.current.action !== "build") {
-      addEvent(
-        chainActionRef.current.action === "deploy" ? "deploy" : "instruction",
-        "Finish the current action first",
-        "You can open another program while a build runs. Deploy and interaction stay attached to their current workspace.",
-        "idle"
-      );
+    if (
+      chainActionBlocks(
+        "You can open another program while a build runs. Deploy and interaction stay attached to their current workspace."
+      )
+    ) {
       return;
     }
     if (!PgExplorer.allWorkspaceNames?.includes(workspaceName)) {
@@ -963,18 +966,7 @@ const LearningShell = () => {
       await PgExplorer.switchWorkspace(workspaceName, {
         defaultOpenFile: "src/lib.rs",
       });
-      localStorage.setItem(CUSTOM_WORKSPACE_KEY, workspaceName);
-      setCustomProgram(workspaceName);
-      setLibraryTab("examples");
-      activeWorkspaceNameRef.current = workspaceName;
-      setActiveWorkspaceName(workspaceName);
-      if (!workspaceStatesRef.current[workspaceName]) {
-        updateWorkspaceState(workspaceName, () =>
-          createWorkspaceLearningState(workspaceName)
-        );
-      }
-      setInteractionOpen(false);
-      setWalletOpen(false);
+      activateWorkspace(workspaceName, "examples");
       setMobilePanel("code");
     } finally {
       setReady(true);
@@ -982,13 +974,11 @@ const LearningShell = () => {
   };
 
   const startNewProgram = async () => {
-    if (chainActionRef.current && chainActionRef.current.action !== "build") {
-      addEvent(
-        chainActionRef.current.action === "deploy" ? "deploy" : "instruction",
-        "Finish the current action first",
-        "You can open another program while a build runs. Deploy and interaction stay attached to their current workspace.",
-        "idle"
-      );
+    if (
+      chainActionBlocks(
+        "You can open another program while a build runs. Deploy and interaction stay attached to their current workspace."
+      )
+    ) {
       return;
     }
     setReady(false);
@@ -1010,15 +1000,11 @@ const LearningShell = () => {
         ),
       },
     ]);
-    localStorage.setItem(CUSTOM_WORKSPACE_KEY, workspaceName);
-    setCustomProgram(workspaceName);
-    setLibraryTab("examples");
-    activeWorkspaceNameRef.current = workspaceName;
-    setActiveWorkspaceName(workspaceName);
+    // Reset first: a reused workspace name must not inherit stale chat state.
     updateWorkspaceState(workspaceName, () =>
       createWorkspaceLearningState(workspaceName)
     );
-    setInteractionOpen(false);
+    activateWorkspace(workspaceName, "examples");
     setChatInput("I want to build ");
     setReady(true);
     setMobilePanel("tutor");
@@ -1860,18 +1846,7 @@ const LearningShell = () => {
 
   const copyDiagnostic = async (event: LearningEvent) => {
     if (!event.diagnostic) return;
-    try {
-      await navigator.clipboard.writeText(event.diagnostic);
-    } catch {
-      const textarea = document.createElement("textarea");
-      textarea.value = event.diagnostic;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-    }
+    await copyText(event.diagnostic);
     setCopiedEventId(event.id);
     window.setTimeout(
       () =>
@@ -1884,19 +1859,7 @@ const LearningShell = () => {
 
   const copyWalletAddress = async () => {
     if (!wallet) return;
-    const address = wallet.publicKey.toBase58();
-    try {
-      await navigator.clipboard.writeText(address);
-    } catch {
-      const textarea = document.createElement("textarea");
-      textarea.value = address;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-    }
+    await copyText(wallet.publicKey.toBase58());
     setWalletAddressCopied(true);
     window.setTimeout(() => setWalletAddressCopied(false), 1600);
   };
@@ -2392,7 +2355,7 @@ const LearningShell = () => {
             {timelineView === "notes" ? (
               <EventList id="activity-output">
                 {events.slice(0, 4).map((event) => (
-                  <EventRow key={event.id} status={event.status}>
+                  <EventRow key={event.id}>
                     {event.status === "working" ? (
                       <WorkingSpinner aria-label="In progress" />
                     ) : (
@@ -2964,6 +2927,22 @@ const randomId = () =>
   globalThis.crypto?.randomUUID?.() ??
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+const copyText = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // The Clipboard API needs a secure context; fall back to execCommand.
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  }
+};
+
 const shortAddress = (address: string) =>
   address ? `${address.slice(0, 4)}…${address.slice(-4)}` : "pending";
 
@@ -3265,15 +3244,6 @@ const BrandCopy = styled.div`
     font-size: 1.18rem;
     font-weight: 750;
     letter-spacing: -0.035em;
-  }
-
-  small {
-    margin-top: 0.28rem;
-    color: var(--muted);
-    font-family: "JetBrains Mono", "SFMono-Regular", monospace;
-    font-size: 0.6rem;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
   }
 
   @media (max-width: 720px) {
@@ -3723,7 +3693,7 @@ const ChapterButton = styled.button<{ active: boolean }>`
   gap: 0.78rem;
   min-height: 5rem;
   padding: 0.9rem 0.9rem;
-  border: 1px solid ${({ active }) => (active ? "transparent" : "transparent")};
+  border: 1px solid transparent;
   border-radius: 0.85rem;
   background: ${({ active }) =>
     active ? "var(--lesson-gradient)" : "transparent"};
@@ -4484,31 +4454,13 @@ const EventList = styled.div`
   overflow: auto;
 `;
 
-const EventRow = styled.div<{ status: LearningEvent["status"] }>`
+const EventRow = styled.div`
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: start;
   gap: 0.65rem;
   padding: 0.58rem 0.8rem;
   border-bottom: 1px solid var(--line);
-
-  > div:nth-child(2) {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-
-    strong {
-      font-size: 0.72rem;
-    }
-    span {
-      color: var(--muted);
-      font-size: 0.64rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-  }
 
   time {
     color: var(--muted);
@@ -4521,6 +4473,17 @@ const EventCopy = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+
+  strong {
+    font-size: 0.72rem;
+  }
+  span {
+    color: var(--muted);
+    font-size: 0.64rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 `;
 
 const EventExplorerLink = styled.a`
