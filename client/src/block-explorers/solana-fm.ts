@@ -12,8 +12,7 @@ export const solanaFM = PgBlockExplorer.create({
       case "localnet":
         // Doesn't work with protocol ("http") prefix
         return (
-          "?cluster=custom-" +
-          new URL(PgConnection.current.rpcEndpoint).host
+          "?cluster=custom-" + new URL(PgConnection.current.rpcEndpoint).host
         );
       default:
         return "";

@@ -8,7 +8,5 @@ export enum Endpoint {
 }
 
 /** Shared Surfpool used by the learning playground. */
-export const SURFPOOL_RPC_URL =
-  "https://holms-subas-mics.txtx.network:8899/";
-export const SURFPOOL_WS_URL =
-  "wss://holms-subas-mics.txtx.network:8900/";
+export const SURFPOOL_RPC_URL = "https://holms-subas-mics.txtx.network:8899/";
+export const SURFPOOL_WS_URL = "wss://holms-subas-mics.txtx.network:8900/";

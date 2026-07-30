@@ -1,7 +1,4 @@
-import {
-  SURFPOOL_RPC_URL,
-  SURFPOOL_WS_URL,
-} from "../constants/connection";
+import { SURFPOOL_RPC_URL, SURFPOOL_WS_URL } from "../constants/connection";
 import { PgCommon } from "./common";
 import { createDerivable, declareDecorator, derivable } from "./decorators";
 import { OverridableConnection, PgPlaynet } from "./playnet";
