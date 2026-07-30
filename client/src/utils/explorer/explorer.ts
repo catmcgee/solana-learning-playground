@@ -43,6 +43,7 @@ export class PgExplorer {
     ON_DID_CREATE_ITEM: "explorerondidcreateitem",
     ON_DID_RENAME_ITEM: "explorerondidrenameitem",
     ON_DID_DELETE_ITEM: "explorerondiddeleteitem",
+    ON_DID_CHANGE_FILE_CONTENT: "explorerondidchangefilecontent",
     ON_DID_OPEN_FILE: "explorerondidopenfile",
     ON_DID_CLOSE_FILE: "explorerondidclosefile",
     ON_DID_SET_TABS: "explorerondidsettabs",
@@ -646,7 +647,14 @@ export class PgExplorer {
    */
   static saveFileToState(path: string, content: string) {
     path = this.convertToFullPath(path);
-    if (this.files[path]) this.files[path].content = content;
+    const file = this.files[path];
+    if (!file || file.content === content) return;
+
+    file.content = content;
+    PgCommon.createAndDispatchCustomEvent(
+      this.events.ON_DID_CHANGE_FILE_CONTENT,
+      { path, content }
+    );
   }
 
   /**
@@ -994,6 +1002,21 @@ export class PgExplorer {
    */
   static onDidDeleteItem(cb: (path: string) => unknown) {
     return PgCommon.onDidChange(PgExplorer.events.ON_DID_DELETE_ITEM, cb);
+  }
+
+  /**
+   * Runs after an open file's content has been saved to explorer state.
+   *
+   * @param cb callback function to run
+   * @returns a dispose function to clear the event
+   */
+  static onDidChangeFileContent(
+    cb: (file: { path: string; content: string }) => unknown
+  ) {
+    return PgCommon.onDidChange(
+      PgExplorer.events.ON_DID_CHANGE_FILE_CONTENT,
+      cb
+    );
   }
 
   /**

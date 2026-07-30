@@ -38,8 +38,21 @@ export const writeImportedProgramRepos = (repos: string[]) =>
 
 export type CustomProgramEntry = {
   createdAt: number;
+  programName?: string;
   workspaceName: string;
 };
+
+export const getAnchorProgramName = (source?: string) => {
+  if (!source) return undefined;
+
+  const match = source.match(
+    /^[\t ]*#\s*\[\s*program\s*\]\s*(?:pub(?:\s*\([^)\r\n]+\))?\s+)?mod\s+(?:r#)?([A-Za-z_][A-Za-z0-9_]*)\b/m
+  );
+  return match?.[1];
+};
+
+export const getCustomProgramDisplayName = (program: CustomProgramEntry) =>
+  program.programName || program.workspaceName;
 
 export const readCustomPrograms = (): CustomProgramEntry[] => {
   try {
@@ -49,7 +62,7 @@ export const readCustomPrograms = (): CustomProgramEntry[] => {
     if (!Array.isArray(parsed)) return [];
 
     const seen = new Set<string>();
-    return parsed.filter((value): value is CustomProgramEntry => {
+    return parsed.reduce<CustomProgramEntry[]>((programs, value) => {
       if (
         !value ||
         typeof value !== "object" ||
@@ -58,11 +71,19 @@ export const readCustomPrograms = (): CustomProgramEntry[] => {
         typeof value.createdAt !== "number" ||
         seen.has(value.workspaceName)
       ) {
-        return false;
+        return programs;
       }
       seen.add(value.workspaceName);
-      return true;
-    });
+      programs.push({
+        workspaceName: value.workspaceName,
+        createdAt: value.createdAt,
+        ...(typeof value.programName === "string" &&
+        /^[A-Za-z_][A-Za-z0-9_]*$/.test(value.programName)
+          ? { programName: value.programName }
+          : {}),
+      });
+      return programs;
+    }, []);
   } catch {
     return [];
   }

@@ -23,6 +23,8 @@ import {
 } from "./tutorial-workspace";
 import {
   CustomProgramEntry,
+  getAnchorProgramName,
+  getCustomProgramDisplayName,
   readCustomPrograms,
   readImportedExampleIds,
   readImportedProgramRepos,
@@ -164,6 +166,7 @@ const LearningShell = () => {
   const [customPrograms, setCustomPrograms] =
     useState<CustomProgramEntry[]>(readCustomPrograms);
   const customProgramsRef = useRef(customPrograms);
+  const customProgramNameTimerRef = useRef<number>();
   const [timelineHeight, setTimelineHeight] = useState(() => {
     const saved = Number(localStorage.getItem(TIMELINE_HEIGHT_KEY));
     return clampTimelineHeight(
@@ -559,6 +562,48 @@ const LearningShell = () => {
     writeCustomPrograms(customPrograms);
   }, [customPrograms]);
 
+  const syncActiveCustomProgramName = useCallback(() => {
+    const workspaceName = PgExplorer.currentWorkspaceName;
+    if (!workspaceName) return;
+
+    const programName = getAnchorProgramName(
+      PgExplorer.getFileContent("src/lib.rs")
+    );
+    setCustomPrograms((current) =>
+      current.map((program) =>
+        program.workspaceName === workspaceName &&
+        program.programName !== programName
+          ? { ...program, programName }
+          : program
+      )
+    );
+  }, []);
+
+  useEffect(() => {
+    const scheduleSync = () => {
+      window.clearTimeout(customProgramNameTimerRef.current);
+      customProgramNameTimerRef.current = window.setTimeout(
+        syncActiveCustomProgramName,
+        80
+      );
+    };
+    const fileContent = PgExplorer.onDidChangeFileContent(({ path }) => {
+      if (path.endsWith("/src/lib.rs")) scheduleSync();
+    });
+    const createItem = PgExplorer.onDidCreateItem(scheduleSync);
+    const switchWorkspace = PgExplorer.onDidSwitchWorkspace(scheduleSync);
+    const init = PgExplorer.onDidInit(scheduleSync);
+    scheduleSync();
+
+    return () => {
+      window.clearTimeout(customProgramNameTimerRef.current);
+      fileContent.dispose();
+      createItem.dispose();
+      switchWorkspace.dispose();
+      init.dispose();
+    };
+  }, [syncActiveCustomProgramName]);
+
   useEffect(() => {
     let active = true;
     loadProgramCatalog()
@@ -953,7 +998,13 @@ const LearningShell = () => {
     });
     setCustomPrograms((current) => [
       ...current.filter((program) => program.workspaceName !== workspaceName),
-      { workspaceName, createdAt: Date.now() },
+      {
+        workspaceName,
+        createdAt: Date.now(),
+        programName: getAnchorProgramName(
+          NEW_PROGRAM_FILES.find(([path]) => path === "src/lib.rs")?.[1]
+        ),
+      },
     ]);
     localStorage.setItem(CUSTOM_WORKSPACE_KEY, workspaceName);
     setCustomProgram(workspaceName);
@@ -1843,6 +1894,9 @@ const LearningShell = () => {
   const activeCustomEntry = customProgram
     ? customPrograms.find((program) => program.workspaceName === customProgram)
     : undefined;
+  const activeCustomProgramName = activeCustomEntry
+    ? getCustomProgramDisplayName(activeCustomEntry)
+    : undefined;
   const actionBusyTitle = backgroundAction
     ? backgroundAction.workspaceName === activeWorkspaceName
       ? `${
@@ -2013,7 +2067,7 @@ const LearningShell = () => {
                       <CustomProgramNumber>✦</CustomProgramNumber>
                       <CustomProgramCopy>
                         <small>MY CUSTOM PROGRAM</small>
-                        <strong>{program.workspaceName}</strong>
+                        <strong>{getCustomProgramDisplayName(program)}</strong>
                       </CustomProgramCopy>
                     </ChapterButton>
                   ))}
@@ -2119,7 +2173,7 @@ const LearningShell = () => {
                 {customProgram && PgTutorial.isWorkspaceTutorial(customProgram)
                   ? customProgram
                   : activeCustomEntry
-                  ? activeCustomEntry.workspaceName
+                  ? activeCustomProgramName
                   : customProgram
                   ? "Your guided program"
                   : lesson.title}
