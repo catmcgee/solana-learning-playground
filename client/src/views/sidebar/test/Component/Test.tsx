@@ -15,15 +15,7 @@ import {
   useRenderOnChange,
 } from "../../../../hooks";
 
-type TestProps = {
-  onInstructionSuccess?: (signature: string, instructionName: string) => void;
-  onInstructionError?: (error: Error, instructionName: string) => void;
-};
-
-const Test = ({
-  onInstructionSuccess,
-  onInstructionError,
-}: TestProps = {}) => {
+const Test = () => {
   useRenderOnChange(PgCommand.build.onDidFinish);
 
   const programInfo = useProgramInfo();
@@ -115,8 +107,6 @@ const Test = ({
               key={JSON.stringify(ix)}
               index={i}
               idlInstruction={ix}
-              onSuccess={onInstructionSuccess}
-              onError={onInstructionError}
             />
           ))}
         </ProgramInteractionWrapper>

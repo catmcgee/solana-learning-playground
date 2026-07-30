@@ -7,18 +7,16 @@ import {
   PgWallet,
 } from "../utils";
 import { SURFPOOL_RPC_URL } from "../constants";
-import type { LearningSession, SurfpoolSession, TutorToolCall } from "./types";
+import type { LearningSession, TutorToolCall } from "./types";
 
 const SESSION_KEY = "solpg-learning-session";
 
 const requestUrl = (path: string) =>
   PgCommon.joinPaths(PgSettings.server.endpoint, path);
 
-export const getLearningToken = () => localStorage.getItem(SESSION_KEY);
-
 export const getOrCreateLearningSession =
   async (): Promise<LearningSession> => {
-    const saved = getLearningToken();
+    const saved = localStorage.getItem(SESSION_KEY);
     if (saved) {
       return { token: saved, aiDailyLimit: 100, surfpoolLimit: 2 };
     }
@@ -57,21 +55,6 @@ const learningFetch = async (
 
   localStorage.removeItem(SESSION_KEY);
   return learningFetch(path, init, false);
-};
-
-export const createSurfpoolSession = async (): Promise<SurfpoolSession> => {
-  const response = await learningFetch("/surfpool/sessions", {
-    method: "POST",
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as SurfpoolSession;
-};
-
-export const resetSurfpoolSession = async (id: string) => {
-  const response = await learningFetch(`/surfpool/sessions/${id}/reset`, {
-    method: "POST",
-  });
-  if (!response.ok) throw new Error(await response.text());
 };
 
 type StreamTutorParams = {
@@ -194,9 +177,6 @@ export const streamTutor = async ({
   handleEvent();
   return createdResponseId;
 };
-
-export const getManagedSurfpoolUrl = (session: SurfpoolSession) =>
-  requestUrl(session.rpcPath);
 
 const getTutorErrorMessage = (
   error?: { code?: string; message?: string } | null

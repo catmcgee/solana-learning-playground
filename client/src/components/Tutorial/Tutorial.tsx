@@ -1,8 +1,7 @@
-import { FC, useCallback, useContext, useEffect } from "react";
+import { FC, useCallback, useEffect } from "react";
 import styled, { css } from "styled-components";
 
 import { About, Main } from "./views";
-import { TutorialRenderContext } from "../../learning/tutorial-context";
 import { PgTheme, PgTutorial } from "../../utils";
 import { useRenderOnChange } from "../../hooks";
 import type { TutorialComponentProps } from "./types";
@@ -16,7 +15,6 @@ export const Tutorial: FC<TutorialComponentProps> = ({
   onMount,
   onComplete,
 }) => {
-  const redesignedRenderer = useContext(TutorialRenderContext);
   useRenderOnChange(PgTutorial.onDidChange);
 
   const start = useCallback(
@@ -28,18 +26,6 @@ export const Tutorial: FC<TutorialComponentProps> = ({
   useEffect(() => {
     if (onMount) return onMount();
   }, [onMount]);
-
-  if (redesignedRenderer) {
-    return redesignedRenderer({
-      about,
-      pages,
-      files,
-      defaultOpenFile,
-      layout,
-      onMount,
-      onComplete,
-    });
-  }
 
   if (!PgTutorial.current) throw new Error("Current tutorial has not been set");
 

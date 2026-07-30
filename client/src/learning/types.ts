@@ -4,12 +4,6 @@ export type LearningSession = {
   surfpoolLimit: number;
 };
 
-export type SurfpoolSession = {
-  id: string;
-  rpcPath: string;
-  wsPath: string;
-};
-
 export type TutorMessage = {
   id: string;
   role: "learner" | "tutor" | "system";

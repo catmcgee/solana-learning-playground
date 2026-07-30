@@ -63,24 +63,26 @@ import {
   PgWeb3,
   TutorialData,
 } from "../utils";
+import { streamTutor } from "./api";
 import {
   getLearningExample,
   LEARNING_EXAMPLES,
-  readWorkspaceLearningStates,
-  streamTutor,
-  writeWorkspaceLearningStates,
-} from ".";
-import type {
-  ChainAction,
-  LearningEvent,
   LearningExample,
+} from "./examples";
+import {
+  ChainAction,
   ProgramStage,
-  TutorMessage,
-  TutorToolCall,
+  readWorkspaceLearningStates,
   WorkspaceLearningState,
   WorkspaceLearningStates,
+  writeWorkspaceLearningStates,
+} from "./workspace-state";
+import type {
+  LearningEvent,
+  TutorMessage,
+  TutorToolCall,
   WorkspacePatch,
-} from ".";
+} from "./types";
 
 const ACTIVE_LESSON_KEY = "solpg-learning-active-lesson";
 const PROGRESS_KEY = "solpg-learning-progress";

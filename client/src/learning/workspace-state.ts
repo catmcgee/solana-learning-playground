@@ -1,10 +1,10 @@
 import type { LearningEvent, TutorMessage, WorkspacePatch } from "./types";
 
-export const WORKSPACE_STATE_KEY = "solpg-learning-workspace-state-v1";
+const WORKSPACE_STATE_KEY = "solpg-learning-workspace-state-v1";
 
 export type ProgramStage = "source" | "built" | "deployed";
 export type ChainAction = "build" | "deploy" | "interact";
-export type UndoFile = { path: string; content?: string };
+type UndoFile = { path: string; content?: string };
 
 export type WorkspaceLearningState = {
   messages: TutorMessage[];
