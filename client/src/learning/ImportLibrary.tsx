@@ -159,7 +159,7 @@ const ImportLibrary = ({
             <Kicker>New workspace</Kicker>
             <h2>What do you want to build?</h2>
             <p>
-              Start clean, open a focused example, or learn through a complete
+              Start clean, open a focused program, or learn through a complete
               tutorial. Your choices and every code change stay in this browser.
             </p>
           </div>
@@ -181,7 +181,7 @@ const ImportLibrary = ({
               className={tab === "examples" ? "active" : undefined}
               onClick={() => setTab("examples")}
             >
-              Examples <span>{examples.length + programs.length}</span>
+              Programs <span>{examples.length + programs.length}</span>
             </button>
             <button
               type="button"
@@ -198,7 +198,9 @@ const ImportLibrary = ({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={`Search ${tab}`}
+              placeholder={
+                tab === "tutorials" ? "Search tutorials" : "Search programs"
+              }
               autoFocus={open}
             />
           </SearchLabel>

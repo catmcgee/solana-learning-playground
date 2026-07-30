@@ -22,9 +22,13 @@ import {
   loadTutorialWorkspace,
 } from "./tutorial-workspace";
 import {
+  CustomProgramEntry,
+  readCustomPrograms,
   readImportedExampleIds,
   readImportedProgramRepos,
   readImportedTutorialNames,
+  renameCustomProgram,
+  writeCustomPrograms,
   writeImportedExampleIds,
   writeImportedProgramRepos,
   writeImportedTutorialNames,
@@ -157,6 +161,9 @@ const LearningShell = () => {
   const [importedProgramRepos, setImportedProgramRepos] = useState<string[]>(
     readImportedProgramRepos
   );
+  const [customPrograms, setCustomPrograms] =
+    useState<CustomProgramEntry[]>(readCustomPrograms);
+  const customProgramsRef = useRef(customPrograms);
   const [timelineHeight, setTimelineHeight] = useState(() => {
     const saved = Number(localStorage.getItem(TIMELINE_HEIGHT_KEY));
     return clampTimelineHeight(
@@ -548,13 +555,18 @@ const LearningShell = () => {
   }, [importedProgramRepos]);
 
   useEffect(() => {
+    customProgramsRef.current = customPrograms;
+    writeCustomPrograms(customPrograms);
+  }, [customPrograms]);
+
+  useEffect(() => {
     let active = true;
     loadProgramCatalog()
       .then((catalog) => {
         if (active) setPrograms(catalog);
       })
       .catch(() => {
-        // New → Examples displays the catalog error in its own surface.
+        // New → Programs displays the catalog error in its own surface.
       });
     return () => {
       active = false;
@@ -603,6 +615,25 @@ const LearningShell = () => {
       await PgExplorer.init();
       const currentLesson = getLearningExample(initialLessonId.current);
       const savedCustom = initialCustomProgram.current;
+      const availableWorkspaceNames = new Set(
+        PgExplorer.allWorkspaceNames ?? []
+      );
+      setCustomPrograms((current) => {
+        const available = current.filter((program) =>
+          availableWorkspaceNames.has(program.workspaceName)
+        );
+        if (
+          savedCustom?.startsWith("learn-my-program-") &&
+          availableWorkspaceNames.has(savedCustom) &&
+          !available.some((program) => program.workspaceName === savedCustom)
+        ) {
+          return [
+            ...available,
+            { workspaceName: savedCustom, createdAt: Date.now() },
+          ];
+        }
+        return available.length === current.length ? current : available;
+      });
       const hasSavedCustom =
         !!savedCustom && !!PgExplorer.allWorkspaceNames?.includes(savedCustom);
       if (savedCustom && !hasSavedCustom) {
@@ -645,6 +676,18 @@ const LearningShell = () => {
       if (!workspaceName || workspaceName === activeWorkspaceNameRef.current) {
         return;
       }
+      const previousWorkspaceName = activeWorkspaceNameRef.current;
+      const previousWasCustom = customProgramsRef.current.some(
+        (program) => program.workspaceName === previousWorkspaceName
+      );
+      const previousStillExists = PgExplorer.allWorkspaceNames?.includes(
+        previousWorkspaceName
+      );
+      if (previousWasCustom && !previousStillExists) {
+        setCustomPrograms((current) =>
+          renameCustomProgram(current, previousWorkspaceName, workspaceName)
+        );
+      }
       const workspaceLesson = LEARNING_EXAMPLES.find(
         (example) => example.workspaceName === workspaceName
       );
@@ -678,6 +721,22 @@ const LearningShell = () => {
     const { dispose } = PgExplorer.onDidSwitchWorkspace(syncWorkspace);
     return dispose;
   }, [updateWorkspaceState]);
+
+  useEffect(() => {
+    const removeDeletedCustomPrograms = () => {
+      const available = new Set(PgExplorer.allWorkspaceNames ?? []);
+      setCustomPrograms((current) => {
+        const next = current.filter((program) =>
+          available.has(program.workspaceName)
+        );
+        return next.length === current.length ? current : next;
+      });
+    };
+    const { dispose } = PgExplorer.onDidDeleteWorkspace(
+      removeDeletedCustomPrograms
+    );
+    return dispose;
+  }, []);
 
   const selectLesson = async (next: LearningExample) => {
     if (next.id === lessonId && !customProgram) return;
@@ -825,6 +884,54 @@ const LearningShell = () => {
     }
   };
 
+  const selectCustomProgram = async (program: CustomProgramEntry) => {
+    const workspaceName = program.workspaceName;
+    if (workspaceName === activeWorkspaceNameRef.current) return;
+    if (chainActionRef.current && chainActionRef.current.action !== "build") {
+      addEvent(
+        chainActionRef.current.action === "deploy" ? "deploy" : "instruction",
+        "Finish the current action first",
+        "You can open another program while a build runs. Deploy and interaction stay attached to their current workspace.",
+        "idle"
+      );
+      return;
+    }
+    if (!PgExplorer.allWorkspaceNames?.includes(workspaceName)) {
+      setCustomPrograms((current) =>
+        current.filter((candidate) => candidate.workspaceName !== workspaceName)
+      );
+      addEvent(
+        "idea",
+        `${workspaceName} is no longer available`,
+        "Its saved files were removed from this browser, so the program was removed from your list.",
+        "error"
+      );
+      return;
+    }
+
+    setReady(false);
+    try {
+      await PgExplorer.switchWorkspace(workspaceName, {
+        defaultOpenFile: "src/lib.rs",
+      });
+      localStorage.setItem(CUSTOM_WORKSPACE_KEY, workspaceName);
+      setCustomProgram(workspaceName);
+      setLibraryTab("examples");
+      activeWorkspaceNameRef.current = workspaceName;
+      setActiveWorkspaceName(workspaceName);
+      if (!workspaceStatesRef.current[workspaceName]) {
+        updateWorkspaceState(workspaceName, () =>
+          createWorkspaceLearningState(workspaceName)
+        );
+      }
+      setInteractionOpen(false);
+      setWalletOpen(false);
+      setMobilePanel("code");
+    } finally {
+      setReady(true);
+    }
+  };
+
   const startNewProgram = async () => {
     if (chainActionRef.current && chainActionRef.current.action !== "build") {
       addEvent(
@@ -844,6 +951,10 @@ const LearningShell = () => {
       files: NEW_PROGRAM_FILES,
       defaultOpenFile: "src/lib.rs",
     });
+    setCustomPrograms((current) => [
+      ...current.filter((program) => program.workspaceName !== workspaceName),
+      { workspaceName, createdAt: Date.now() },
+    ]);
     localStorage.setItem(CUSTOM_WORKSPACE_KEY, workspaceName);
     setCustomProgram(workspaceName);
     setLibraryTab("examples");
@@ -1729,6 +1840,9 @@ const LearningShell = () => {
   const canDeploy = programStage === "built" || programStage === "deployed";
   const canInteract = programStage === "deployed";
   const actionBusy = backgroundAction !== null;
+  const activeCustomEntry = customProgram
+    ? customPrograms.find((program) => program.workspaceName === customProgram)
+    : undefined;
   const actionBusyTitle = backgroundAction
     ? backgroundAction.workspaceName === activeWorkspaceName
       ? `${
@@ -1866,9 +1980,11 @@ const LearningShell = () => {
               className={libraryTab === "examples" ? "active" : undefined}
               onClick={() => setLibraryTab("examples")}
             >
-              Examples
+              Programs
               <span>
-                {importedExampleIds.length + importedProgramRepos.length}
+                {customPrograms.length +
+                  importedExampleIds.length +
+                  importedProgramRepos.length}
               </span>
             </button>
             <button
@@ -1885,10 +2001,25 @@ const LearningShell = () => {
 
           <ChapterList>
             {libraryTab === "examples" ? (
-              LEARNING_EXAMPLES.filter((example) =>
-                importedExampleIds.includes(example.id)
-              )
-                .map((example) => {
+              <>
+                {[...customPrograms]
+                  .sort((a, b) => b.createdAt - a.createdAt)
+                  .map((program) => (
+                    <ChapterButton
+                      key={program.workspaceName}
+                      active={customProgram === program.workspaceName}
+                      onClick={() => void selectCustomProgram(program)}
+                    >
+                      <CustomProgramNumber>✦</CustomProgramNumber>
+                      <CustomProgramCopy>
+                        <small>MY CUSTOM PROGRAM</small>
+                        <strong>{program.workspaceName}</strong>
+                      </CustomProgramCopy>
+                    </ChapterButton>
+                  ))}
+                {LEARNING_EXAMPLES.filter((example) =>
+                  importedExampleIds.includes(example.id)
+                ).map((example) => {
                   const state = progress[example.id];
                   return (
                     <ChapterButton
@@ -1905,29 +2036,28 @@ const LearningShell = () => {
                       </span>
                     </ChapterButton>
                   );
-                })
-                .concat(
-                  programs
-                    .filter((program) =>
-                      importedProgramRepos.includes(program.repo)
-                    )
-                    .map((program) => {
-                      const workspaceName = getProgramWorkspaceName(program);
-                      return (
-                        <ChapterButton
-                          key={program.repo}
-                          active={customProgram === workspaceName}
-                          onClick={() => void selectProgram(program)}
-                        >
-                          <ChapterNumber>✦</ChapterNumber>
-                          <span>
-                            <small>{program.framework} · PROGRAM</small>
-                            <strong>{program.name}</strong>
-                          </span>
-                        </ChapterButton>
-                      );
-                    })
-                )
+                })}
+                {programs
+                  .filter((program) =>
+                    importedProgramRepos.includes(program.repo)
+                  )
+                  .map((program) => {
+                    const workspaceName = getProgramWorkspaceName(program);
+                    return (
+                      <ChapterButton
+                        key={program.repo}
+                        active={customProgram === workspaceName}
+                        onClick={() => void selectProgram(program)}
+                      >
+                        <ChapterNumber>✦</ChapterNumber>
+                        <span>
+                          <small>{program.framework} · PROGRAM</small>
+                          <strong>{program.name}</strong>
+                        </span>
+                      </ChapterButton>
+                    );
+                  })}
+              </>
             ) : importedTutorialNames.length ? (
               PgTutorial.all
                 .filter((tutorial) =>
@@ -1980,12 +2110,16 @@ const LearningShell = () => {
                 {customProgram
                   ? PgTutorial.isWorkspaceTutorial(customProgram)
                     ? "TUTORIAL"
+                    : activeCustomEntry
+                    ? "MY CUSTOM PROGRAM"
                     : "OPEN WORKSPACE"
                   : `LESSON ${String(lesson.order).padStart(2, "0")}`}
               </span>
               <h2>
                 {customProgram && PgTutorial.isWorkspaceTutorial(customProgram)
                   ? customProgram
+                  : activeCustomEntry
+                  ? activeCustomEntry.workspaceName
                   : customProgram
                   ? "Your guided program"
                   : lesson.title}
@@ -3554,6 +3688,29 @@ const ChapterNumber = styled.span`
   border-radius: 50%;
   font-family: "JetBrains Mono", "SFMono-Regular", monospace;
   font-size: 0.72rem;
+`;
+
+const CustomProgramNumber = styled(ChapterNumber)`
+  border-color: #a78bfa;
+  color: #fff;
+  background: #7c3aed;
+  box-shadow: 0 0 0 0.24rem color-mix(in srgb, #8b5cf6 16%, transparent);
+`;
+
+const CustomProgramCopy = styled.span`
+  min-width: 0;
+
+  small {
+    color: #a78bfa !important;
+    font-weight: 850;
+    letter-spacing: 0.08em;
+  }
+
+  strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 `;
 
 const Workbench = styled.section<{

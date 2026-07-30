@@ -3,6 +3,7 @@ import { LEARNING_EXAMPLES } from "./examples";
 const IMPORTED_EXAMPLES_KEY = "solpg-learning-imported-examples-v1";
 const IMPORTED_TUTORIALS_KEY = "solpg-learning-imported-tutorials-v1";
 const IMPORTED_PROGRAMS_KEY = "solpg-learning-imported-programs-v1";
+const CUSTOM_PROGRAMS_KEY = "solpg-learning-custom-programs-v1";
 const DEFAULT_IMPORTED_TUTORIAL_NAMES = [
   "Hello Anchor",
   "Hello Seahorse",
@@ -34,6 +35,59 @@ export const readImportedProgramRepos = () =>
 
 export const writeImportedProgramRepos = (repos: string[]) =>
   writeList(IMPORTED_PROGRAMS_KEY, repos);
+
+export type CustomProgramEntry = {
+  createdAt: number;
+  workspaceName: string;
+};
+
+export const readCustomPrograms = (): CustomProgramEntry[] => {
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(CUSTOM_PROGRAMS_KEY) ?? "[]"
+    );
+    if (!Array.isArray(parsed)) return [];
+
+    const seen = new Set<string>();
+    return parsed.filter((value): value is CustomProgramEntry => {
+      if (
+        !value ||
+        typeof value !== "object" ||
+        typeof value.workspaceName !== "string" ||
+        !value.workspaceName.trim() ||
+        typeof value.createdAt !== "number" ||
+        seen.has(value.workspaceName)
+      ) {
+        return false;
+      }
+      seen.add(value.workspaceName);
+      return true;
+    });
+  } catch {
+    return [];
+  }
+};
+
+export const writeCustomPrograms = (programs: CustomProgramEntry[]) => {
+  try {
+    localStorage.setItem(CUSTOM_PROGRAMS_KEY, JSON.stringify(programs));
+  } catch {
+    // Explorer still preserves the workspace if preference storage is full.
+  }
+};
+
+export const renameCustomProgram = (
+  programs: CustomProgramEntry[],
+  previousWorkspaceName: string,
+  workspaceName: string
+) =>
+  programs
+    .filter((program) => program.workspaceName !== workspaceName)
+    .map((program) =>
+      program.workspaceName === previousWorkspaceName
+        ? { ...program, workspaceName }
+        : program
+    );
 
 export const rememberImportedTutorial = (name: string) => {
   const names = readImportedTutorialNames();
