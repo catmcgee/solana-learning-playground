@@ -1,7 +1,5 @@
 export type LearningSession = {
   token: string;
-  aiDailyLimit: number;
-  surfpoolLimit: number;
 };
 
 export type TutorMessage = {

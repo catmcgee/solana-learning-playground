@@ -27,12 +27,8 @@ pub struct Config {
     pub learning_session_secret: String,
     /// Anonymous AI turns allowed per UTC day.
     pub learning_ai_daily_limit: u32,
-    /// Managed Surfpool sessions allowed per anonymous browser.
-    pub learning_surfpool_limit: usize,
-    /// Managed Surfpool sessions allowed across the server.
-    pub learning_surfpool_global_limit: usize,
-    /// Minutes before an idle managed Surfpool is reclaimed.
-    pub learning_surfpool_idle_minutes: u64,
+    /// AI turns allowed across all anonymous sessions per UTC day.
+    pub learning_ai_global_daily_limit: u32,
 }
 
 impl Config {
@@ -57,9 +53,7 @@ impl Config {
             openai_model: get_env("OPENAI_MODEL", "gpt-5.6-sol"),
             learning_session_secret: get_env("LEARNING_SESSION_SECRET", Uuid::new_v4().to_string()),
             learning_ai_daily_limit: get_env("LEARNING_AI_DAILY_LIMIT", 100u32),
-            learning_surfpool_limit: get_env("LEARNING_SURFPOOL_LIMIT", 2usize),
-            learning_surfpool_global_limit: get_env("LEARNING_SURFPOOL_GLOBAL_LIMIT", 8usize),
-            learning_surfpool_idle_minutes: get_env("LEARNING_SURFPOOL_IDLE_MINUTES", 30u64),
+            learning_ai_global_daily_limit: get_env("LEARNING_AI_GLOBAL_DAILY_LIMIT", 1_000u32),
         }
     }
 }

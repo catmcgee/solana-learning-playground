@@ -72,7 +72,14 @@ module.exports = {
         }),
 
         // Monaco
-        new MonacoWebpackPlugin(),
+        new MonacoWebpackPlugin({
+          // Playground only edits these languages. Keeping Monaco's bundled
+          // contributions scoped avoids shipping dozens of unused grammars.
+          languages: ["javascript", "typescript", "json", "python", "rust"],
+          // Workers live outside webpack's normal chunk graph, so give them
+          // content hashes explicitly for safe long-lived production caching.
+          filename: "static/js/[name].[contenthash:8].worker.js",
+        }),
 
         // Circular dependencies
         new CircularDependencyPlugin({

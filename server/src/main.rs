@@ -13,7 +13,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use anyhow::Result;
 use axum::{
     middleware,
-    routing::{delete, get, post},
+    routing::{get, post},
     Router,
 };
 use tokio::net::TcpListener;
@@ -43,19 +43,11 @@ async fn main() -> Result<()> {
         config.openai_model,
         config.learning_session_secret,
         config.learning_ai_daily_limit,
-        config.learning_surfpool_limit,
-        config.learning_surfpool_global_limit,
-        config.learning_surfpool_idle_minutes,
+        config.learning_ai_global_daily_limit,
     );
-    learning_state.start_surfpool_reaper();
     let learning_routes = Router::new()
         .route("/learning/session", post(learning_session))
         .route("/ai/responses", post(ai_response))
-        .route("/surfpool/sessions", post(surfpool_create))
-        .route("/surfpool/sessions/{id}", delete(surfpool_delete))
-        .route("/surfpool/sessions/{id}/reset", post(surfpool_reset))
-        .route("/surfpool/sessions/{id}/rpc", post(surfpool_proxy))
-        .route("/surfpool/sessions/{id}/ws", get(surfpool_ws))
         .with_state(learning_state);
 
     let unstable_routes = if cfg!(feature = "unstable") {

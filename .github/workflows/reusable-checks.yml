@@ -1,8 +1,6 @@
 name: Checks
 
-# Reusable workflow shared by ci.yml (PR validation) and cicd.yml (master
-# deploy gate). Single source of truth for format/clippy/build steps so the
-# two trigger workflows can't drift apart.
+# Reusable workflow shared by validation and deployment workflows.
 on:
   workflow_call:
 
@@ -87,6 +85,9 @@ jobs:
       - name: Check clippy warnings
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Run server tests
+        run: cargo test --locked
+
   clippy_wasm:
     name: Clippy WASM
     runs-on: ubuntu-latest
@@ -145,5 +146,5 @@ jobs:
       - name: Check git status
         run: git status --porcelain | wc -l | grep -q -w "0"
 
-      - name: Build
-        run: yarn build
+      - name: Validate client
+        run: yarn test

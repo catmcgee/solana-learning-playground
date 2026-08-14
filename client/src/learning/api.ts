@@ -18,7 +18,7 @@ export const getOrCreateLearningSession =
   async (): Promise<LearningSession> => {
     const saved = localStorage.getItem(SESSION_KEY);
     if (saved) {
-      return { token: saved, aiDailyLimit: 100, surfpoolLimit: 2 };
+      return { token: saved };
     }
 
     const response = await fetch(requestUrl("/learning/session"), {
@@ -97,11 +97,10 @@ export const streamTutor = async ({
       workspace,
       runtime: {
         network:
-          PgConnection.current.rpcEndpoint.includes("/surfpool/sessions/") ||
           PgCommon.appendSlash(PgConnection.current.rpcEndpoint) ===
-            PgCommon.appendSlash(SURFPOOL_RPC_URL)
-            ? "isolated Surfpool"
-            : "not connected to managed Surfpool",
+          PgCommon.appendSlash(SURFPOOL_RPC_URL)
+            ? "shared Surfpool"
+            : "custom or public RPC",
         walletAddress: PgWallet.current?.publicKey.toBase58() ?? null,
         walletBalanceSol: PgWallet.balance,
         programId: PgProgramInfo.pk?.toBase58() ?? null,

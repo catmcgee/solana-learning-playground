@@ -408,8 +408,7 @@ class _PgWallet {
       }
 
       const endpoint = PgConnection.current.rpcEndpoint;
-      const isIsolatedLearningNetwork =
-        endpoint.includes("/surfpool/sessions/") ||
+      const isLearningNetwork =
         PgCommon.appendSlash(endpoint) ===
           PgCommon.appendSlash(SURFPOOL_RPC_URL) ||
         endpoint === "http://localhost:8899" ||
@@ -418,10 +417,10 @@ class _PgWallet {
         (account.name === "Surfpool lab" ||
           account.name === "Surfpool wallet" ||
           matchesSurfpoolSecret) &&
-        !isIsolatedLearningNetwork
+        !isLearningNetwork
       ) {
         throw new Error(
-          "The Surfpool wallet can only sign on an isolated learning network."
+          "The Surfpool wallet can only sign on a configured learning network."
         );
       }
     };

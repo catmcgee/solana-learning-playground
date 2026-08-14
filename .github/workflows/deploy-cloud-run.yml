@@ -22,7 +22,11 @@ env:
   SERVICE: solana-learning-playground-api
 
 jobs:
+  checks:
+    uses: ./.github/workflows/reusable-checks.yml
+
   deploy:
+    needs: checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +93,6 @@ jobs:
             --timeout 3600 \
             --no-cpu-throttling \
             --cpu-boost \
-            --set-env-vars "^@^PG_CLIENT_URLS=https://solana-learning-playground.vercel.app,http://localhost:3000,http://127.0.0.1:3000@PG_OPENAI_MODEL=gpt-5.6-sol@PG_BUILD_CONCURRENCY=1@PG_LEARNING_AI_DAILY_LIMIT=100@PG_LEARNING_SURFPOOL_LIMIT=2@PG_LEARNING_SURFPOOL_GLOBAL_LIMIT=8@PG_LEARNING_SURFPOOL_IDLE_MINUTES=30@PG_VERBOSE=true" \
+            --set-env-vars "^@^PG_CLIENT_URLS=https://solana-learning-playground.vercel.app,http://localhost:3000,http://127.0.0.1:3000@PG_OPENAI_MODEL=gpt-5.6-sol@PG_BUILD_CONCURRENCY=1@PG_LEARNING_AI_DAILY_LIMIT=100@PG_LEARNING_AI_GLOBAL_DAILY_LIMIT=1000@PG_VERBOSE=true" \
             --set-secrets "PG_OPENAI_API_KEY=solpg-openai-api-key:latest,PG_LEARNING_SESSION_SECRET=solpg-learning-session-secret:latest" \
             --quiet

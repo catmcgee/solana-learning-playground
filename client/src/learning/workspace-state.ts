@@ -1,4 +1,5 @@
 import type { LearningEvent, TutorMessage, WorkspacePatch } from "./types";
+import { LEARNING_EXAMPLES } from "./examples";
 
 const WORKSPACE_STATE_KEY = "solpg-learning-workspace-state-v1";
 
@@ -19,6 +20,70 @@ export type WorkspaceLearningState = {
 };
 
 export type WorkspaceLearningStates = Record<string, WorkspaceLearningState>;
+
+export const createLearningId = () =>
+  globalThis.crypto?.randomUUID?.() ??
+  `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+export const createLearningEvent = (
+  kind: LearningEvent["kind"],
+  title: string,
+  detail: string,
+  status: LearningEvent["status"],
+  diagnostic?: string,
+  explorerUrl?: string
+): LearningEvent => ({
+  id: createLearningId(),
+  kind,
+  title,
+  detail,
+  diagnostic,
+  explorerUrl,
+  status,
+  time: Date.now(),
+});
+
+export const createWorkspaceLearningState = (
+  workspaceName: string
+): WorkspaceLearningState => {
+  const lesson = LEARNING_EXAMPLES.find(
+    (example) => example.workspaceName === workspaceName
+  );
+  const messages: TutorMessage[] = lesson
+    ? [
+        {
+          id: createLearningId(),
+          role: "tutor",
+          text: `Welcome to **${lesson.title}**. ${lesson.description}\n\nI can explain any line, change the program with you, or drive the build → deploy → interact loop. You will always preview code edits before they land.`,
+        },
+      ]
+    : [
+        {
+          id: createLearningId(),
+          role: "tutor",
+          text: "This is your new program. Tell me what you want to make—even a rough idea is enough. I’ll turn it into small, explainable steps and propose every code change for review.",
+        },
+      ];
+
+  return {
+    messages,
+    previousResponseId: undefined,
+    patch: null,
+    undoFiles: null,
+    events: [
+      createLearningEvent(
+        "network",
+        "Surfpool connection",
+        "Connecting to the deployed learning network.",
+        "idle"
+      ),
+    ],
+    terminalLines: [],
+    programStage: "source",
+    chainAction: null,
+    experimentDismissed: false,
+  };
+};
 
 export const readWorkspaceLearningStates = (): WorkspaceLearningStates => {
   try {

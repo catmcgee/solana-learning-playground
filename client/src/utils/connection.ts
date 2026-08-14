@@ -121,7 +121,6 @@ class _PgConnection {
    */
   static create(opts?: { endpoint?: string } & PgWeb3.ConnectionConfig) {
     const endpoint = opts?.endpoint ?? PgSettings.connection.endpoint;
-    const managedSurfpool = endpoint.includes("/surfpool/sessions/");
     const deployedSurfpool =
       PgCommon.appendSlash(endpoint) === PgCommon.appendSlash(SURFPOOL_RPC_URL);
     let connectionConfig: PgWeb3.ConnectionConfig | PgWeb3.Commitment;
@@ -129,17 +128,6 @@ class _PgConnection {
       connectionConfig = {
         commitment: opts?.commitment ?? PgSettings.connection.commitment,
         wsEndpoint: SURFPOOL_WS_URL,
-      };
-    } else if (managedSurfpool) {
-      connectionConfig = {
-        commitment: opts?.commitment ?? PgSettings.connection.commitment,
-        wsEndpoint: getManagedSurfpoolWsEndpoint(endpoint),
-        fetchMiddleware: (url, init, fetch) => {
-          const token = localStorage.getItem("solpg-learning-session");
-          const headers = new Headers(init.headers);
-          if (token) headers.set("x-solpg-session", token);
-          fetch(url, { ...init, headers });
-        },
       };
     } else if (opts) {
       const { endpoint: _endpoint, ...config } = opts;
@@ -206,7 +194,6 @@ class _PgConnection {
 
     // Local
     if (
-      endpoint.includes("/surfpool/sessions/") ||
       PgCommon.appendSlash(endpoint) ===
         PgCommon.appendSlash(SURFPOOL_RPC_URL) ||
       endpoint.includes("localhost") ||
@@ -293,24 +280,6 @@ class _PgConnection {
     }
   }
 }
-
-const getManagedSurfpoolWsEndpoint = (rpcEndpoint: string) => {
-  try {
-    const session = JSON.parse(
-      localStorage.getItem("solpg-learning-surfpool") ?? "null"
-    ) as { rpcPath?: string; wsPath?: string } | null;
-    if (!session?.rpcPath || !session.wsPath) return undefined;
-
-    if (!rpcEndpoint.endsWith(session.rpcPath)) return undefined;
-
-    const serverUrl = new URL(PgSettings.server.endpoint, window.location.href);
-    const websocketUrl = new URL(session.wsPath, serverUrl);
-    websocketUrl.protocol = websocketUrl.protocol === "https:" ? "wss:" : "ws:";
-    return websocketUrl.toString();
-  } catch {
-    return undefined;
-  }
-};
 
 export const PgConnection = declareDecorator(_PgConnection, {
   derivable: derive,

@@ -1,15 +1,26 @@
+import { lazy, Suspense } from "react";
 import styled from "styled-components";
 
-import Bottom from "./Bottom";
-import LearningShell from "../../learning/LearningShell";
-import TutorialShell from "../../learning/TutorialShell";
-import Main from "./Main";
-import Side from "./Side";
 import ModalBackdrop from "../../components/ModalBackdrop";
 import Toast from "../../components/Toast";
-import Wallet from "../../components/Wallet";
 import { PgRouter, PgView } from "../../utils";
 import { useRenderOnChange } from "../../hooks";
+
+const IdePanels = lazy(
+  () => import(/* webpackChunkName: "ide-panels" */ "./IdePanels")
+);
+const LearningShell = lazy(
+  () =>
+    import(
+      /* webpackChunkName: "learning-shell" */ "../../learning/LearningShell"
+    )
+);
+const TutorialShell = lazy(
+  () =>
+    import(
+      /* webpackChunkName: "tutorial-shell" */ "../../learning/TutorialShell"
+    )
+);
 
 const Panels = () => {
   const path =
@@ -19,22 +30,17 @@ const Panels = () => {
 
   return (
     <Wrapper>
-      {learning ? (
-        <LearningShell />
-      ) : tutorials ? (
-        <TutorialShell />
-      ) : (
-        <>
-          <TopWrapper>
-            <Side />
-            <Main />
-          </TopWrapper>
-
-          <Bottom />
-        </>
-      )}
-
-      {!learning && !tutorials && <Wallet />}
+      <Suspense
+        fallback={<PanelLoading role="status">Loading workspace…</PanelLoading>}
+      >
+        {learning ? (
+          <LearningShell />
+        ) : tutorials ? (
+          <TutorialShell />
+        ) : (
+          <IdePanels />
+        )}
+      </Suspense>
 
       {/* A portal that is *above* the modal backdrop stacking context */}
       <PortalAbove id={PgView.ids.PORTAL_ABOVE} />
@@ -58,12 +64,11 @@ const Wrapper = styled.div`
   overflow: hidden;
 `;
 
-const TopWrapper = styled.div`
-  display: grid;
-  grid-template-columns: auto 1fr;
-  overflow: hidden;
-  width: 100%;
+const PanelLoading = styled.div`
   flex: 1;
+  display: grid;
+  place-items: center;
+  color: ${({ theme }) => theme.colors.default.textSecondary};
 `;
 
 const PortalAbove = styled.div`

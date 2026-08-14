@@ -313,8 +313,8 @@ export class PgCommandManager {
       PgCommon.createAndDispatchCustomEvent(eventNames.start, input);
 
       let cmd: Command<string, Arg[], Option[], any[], any> = topCmd;
-      const args = [];
-      const opts = [];
+      const args: string[] = [];
+      const opts: string[] = [];
 
       for (const i in tokens) {
         const token = tokens[i];
@@ -338,202 +338,26 @@ export class PgCommandManager {
 
         // Check missing command processor
         if (!cmd.handle) {
-          PgTerminal.println(`
-${cmd.description}
-
-Usage: ${[...tokens.slice(0, +i), cmd.name].join(" ")} <COMMAND>
-
-Commands:
-
-${PgTerminal.formatList(cmd.subcommands!)}`);
+          printSubcommandHelp(cmd, tokens, +i);
           break;
         }
 
-        const hasArgsOrOpts = cmd.args?.length || cmd.options!.length > 1;
-        if (hasArgsOrOpts) {
-          // Handle `help` option
+        const hasArgsOrOptions = Boolean(
+          cmd.args?.length || (cmd.options?.length ?? 0) > 1
+        );
+        if (hasArgsOrOptions) {
           if (nextToken === "--help" || nextToken === "-h") {
-            const usagePrefix = `Usage: ${[
-              ...tokens.slice(0, +i),
-              cmd.name,
-            ].join(" ")} [OPTIONS]`;
-            const lines = [cmd.description];
-            if (cmd.subcommands) {
-              lines.push(
-                `${usagePrefix} <COMMAND>`,
-                "Commands:",
-                PgTerminal.formatList(cmd.subcommands)
-              );
-            }
-            if (cmd.args) {
-              const toArgStr = (arg: Arg) => {
-                const name = arg.name.toUpperCase();
-                return arg.multiple ? `[${name}]` : `<${name}>`;
-              };
-
-              const usageArgs = cmd.args.reduce(
-                (acc, arg) => acc + toArgStr(arg) + " ",
-                ""
-              );
-              const argList = cmd.args.map((arg) => [
-                toArgStr(arg),
-                (arg.description ?? "") +
-                  (Array.isArray(arg.values)
-                    ? ` (possible values: ${arg.values.join(", ")})`
-                    : ""),
-              ]);
-              lines.push(
-                `${usagePrefix} ${usageArgs}`,
-                "Arguments:",
-                PgTerminal.formatList(argList)
-              );
-            }
-            if (cmd.options) {
-              const optList = cmd.options.map((opt) => [
-                `${opt.short ? `-${opt.short}, ` : ""}--${opt.name} ${
-                  opt.takeValue ? `<${opt.name.toUpperCase()}>` : ""
-                }`,
-                opt.description ?? "",
-              ]);
-              lines.push("Options:", PgTerminal.formatList(optList));
-            }
-
-            PgTerminal.println(lines.join("\n\n"));
+            printCommandHelp(cmd, tokens, +i);
             return;
           }
 
-          // Get subcommands, args and options
           if (nextToken && !isNextTokenSubcmd) {
-            let takeValue = false;
-            for (const argOrOpt of tokens.slice(nextIndex)) {
-              if (takeValue) {
-                opts.push(argOrOpt);
-                takeValue = false;
-                continue;
-              }
-
-              const isOpt = argOrOpt.startsWith("-");
-              if (isOpt && cmd.options) {
-                const opt = cmd.options.find(
-                  (o) =>
-                    "--" + o.name === argOrOpt || "-" + o.short === argOrOpt
-                );
-                if (!opt) throw new Error(`Unexpected option: \`${argOrOpt}\``);
-
-                opts.push(argOrOpt);
-                if (opt.takeValue) takeValue = true;
-              } else if (cmd.args) {
-                args.push(argOrOpt);
-              }
-            }
-
-            if (!cmd.args && cmd.subcommands) {
-              if (nextToken.startsWith("-")) {
-                throw new Error(`Unexpected option: \`${nextToken}\``);
-              }
-
-              throw new Error(
-                `Subcommand doesn't exist: \`${nextToken}\`
-
-Available subcommands: ${cmd.subcommands.map((cmd) => cmd.name).join(", ")}`
-              );
-            }
-            if (
-              args.length > (cmd.args?.length ?? 0) &&
-              !cmd.args?.at(-1)?.multiple
-            ) {
-              throw new Error(
-                `Provided argument count is higher than expected: ${args.length}`
-              );
-            }
+            collectArgsAndOptions(cmd, tokens, nextIndex, args, opts);
           }
         }
 
-        // Parse args
-        const parsedArgs: Record<string, Arrayable<unknown>> = {};
-        if (cmd.args) {
-          for (const i in cmd.args) {
-            const arg = cmd.args[i];
-            const inputArgs = arg.multiple
-              ? args.slice(+i)
-              : args[i]
-              ? [args[i]]
-              : [];
-            if (!inputArgs.length) {
-              if (!arg.optional) {
-                throw new Error(`Argument not specified: \`${arg.name}\``);
-              }
-
-              // Optional argument value not specified, skip
-              continue;
-            }
-
-            // Validate values if specified
-            if (inputArgs.length && arg.values) {
-              const values =
-                typeof arg.values === "function"
-                  ? arg.values(args[i], tokens)
-                  : arg.values;
-              const invalidValue = inputArgs.find(
-                (inputArg) => !values.includes(inputArg)
-              );
-              if (invalidValue) {
-                throw new Error(
-                  [
-                    `Incorrect argument value given: \`${invalidValue}\``,
-                    `(possible values: ${values.join(", ")})`,
-                  ].join(" ")
-                );
-              }
-            }
-
-            if (arg.parse) {
-              const parse = PgCommandManager._createParse("argument", arg);
-              parsedArgs[arg.name] = arg.multiple
-                ? inputArgs.map((token) => parse(token, tokens))
-                : parse(inputArgs[0], tokens);
-            } else {
-              parsedArgs[arg.name] = arg.multiple ? inputArgs : inputArgs[0];
-            }
-          }
-        }
-
-        // Parse options
-        const parsedOpts: Record<string, unknown> = {};
-        if (cmd.options) {
-          for (const opt of cmd.options) {
-            const i = opts.findIndex(
-              (o) => o === "--" + opt.name || o === "-" + opt.short
-            );
-            if (i === -1) continue;
-
-            if (opt.takeValue) {
-              const val = opts.at(i + 1);
-              if (!val) {
-                throw new Error(`Option value not given: \`${opt.name}\``);
-              }
-
-              // Validate values if specified
-              if (opt.values) {
-                const values = PgCommon.callIfNeeded(opt.values);
-                if (!values.includes(val)) {
-                  throw new Error(
-                    [
-                      `Incorrect option value given: \`${val}\``,
-                      `(possible values: ${values.join(", ")})`,
-                    ].join(" ")
-                  );
-                }
-              }
-
-              parsedOpts[opt.name] = opt.parse
-                ? PgCommandManager._createParse("option", opt)(val, tokens)
-                : val;
-            } else {
-              parsedOpts[opt.name] = true;
-            }
-          }
-        }
+        const parsedArgs = parseArguments(cmd.args, args, tokens);
+        const parsedOpts = parseOptions(cmd.options, opts, tokens);
 
         // Run the command processor
         let result;
@@ -588,25 +412,220 @@ Available subcommands: ${cmd.subcommands.map((cmd) => cmd.name).join(", ")}`
       finish: "ondidrunfinish" + name,
     };
   }
+}
 
-  /** Create a parse function with better error messages. */
-  private static _createParse<T extends Arg | Option>(
-    kind: "argument" | "option",
-    item: T
-  ): NonNullable<T["parse"]> {
-    const parse = item.parse;
-    if (!parse) throw new Error(`Parse not defined: ${item.name}`);
+type AnyCommand = Command<string, Arg[], Option[], any[], any>;
 
-    return (...args) => {
-      try {
-        return item.parse!(...args);
-      } catch (e: any) {
+const printSubcommandHelp = (
+  command: AnyCommand,
+  tokens: string[],
+  commandIndex: number
+) => {
+  PgTerminal.println(`
+${command.description}
+
+Usage: ${[...tokens.slice(0, commandIndex), command.name].join(" ")} <COMMAND>
+
+Commands:
+
+${PgTerminal.formatList(command.subcommands!)}`);
+};
+
+const printCommandHelp = (
+  command: AnyCommand,
+  tokens: string[],
+  commandIndex: number
+) => {
+  const usagePrefix = `Usage: ${[
+    ...tokens.slice(0, commandIndex),
+    command.name,
+  ].join(" ")} [OPTIONS]`;
+  const lines = [command.description];
+
+  if (command.subcommands) {
+    lines.push(
+      `${usagePrefix} <COMMAND>`,
+      "Commands:",
+      PgTerminal.formatList(command.subcommands)
+    );
+  }
+  if (command.args) {
+    const usageArgs = command.args.map(formatArgumentName).join(" ");
+    const argumentList = command.args.map((argument) => [
+      formatArgumentName(argument),
+      (argument.description ?? "") +
+        (Array.isArray(argument.values)
+          ? ` (possible values: ${argument.values.join(", ")})`
+          : ""),
+    ]);
+    lines.push(
+      `${usagePrefix} ${usageArgs}`,
+      "Arguments:",
+      PgTerminal.formatList(argumentList)
+    );
+  }
+  if (command.options) {
+    const optionList = command.options.map((option) => [
+      `${option.short ? `-${option.short}, ` : ""}--${option.name} ${
+        option.takeValue ? `<${option.name.toUpperCase()}>` : ""
+      }`,
+      option.description ?? "",
+    ]);
+    lines.push("Options:", PgTerminal.formatList(optionList));
+  }
+
+  PgTerminal.println(lines.join("\n\n"));
+};
+
+const formatArgumentName = (argument: Arg) => {
+  const name = argument.name.toUpperCase();
+  return argument.multiple ? `[${name}]` : `<${name}>`;
+};
+
+const collectArgsAndOptions = (
+  command: AnyCommand,
+  tokens: string[],
+  startIndex: number,
+  args: string[],
+  options: string[]
+) => {
+  let takeOptionValue = false;
+  for (const token of tokens.slice(startIndex)) {
+    if (takeOptionValue) {
+      options.push(token);
+      takeOptionValue = false;
+      continue;
+    }
+
+    if (token.startsWith("-") && command.options) {
+      const option = command.options.find(
+        (candidate) =>
+          `--${candidate.name}` === token || `-${candidate.short}` === token
+      );
+      if (!option) throw new Error(`Unexpected option: \`${token}\``);
+      options.push(token);
+      takeOptionValue = !!option.takeValue;
+    } else if (command.args) {
+      args.push(token);
+    }
+  }
+
+  const nextToken = tokens[startIndex];
+  if (!command.args && command.subcommands) {
+    if (nextToken.startsWith("-")) {
+      throw new Error(`Unexpected option: \`${nextToken}\``);
+    }
+    throw new Error(
+      `Subcommand doesn't exist: \`${nextToken}\`\n\nAvailable subcommands: ${command.subcommands
+        .map((subcommand) => subcommand.name)
+        .join(", ")}`
+    );
+  }
+  if (
+    args.length > (command.args?.length ?? 0) &&
+    !command.args?.at(-1)?.multiple
+  ) {
+    throw new Error(
+      `Provided argument count is higher than expected: ${args.length}`
+    );
+  }
+};
+
+const parseArguments = (
+  definitions: Arg[] | undefined,
+  args: string[],
+  tokens: string[]
+) => {
+  const parsed: Record<string, Arrayable<unknown>> = {};
+  definitions?.forEach((argument, index) => {
+    const inputArgs = argument.multiple
+      ? args.slice(index)
+      : args[index]
+      ? [args[index]]
+      : [];
+    if (!inputArgs.length) {
+      if (!argument.optional) {
+        throw new Error(`Argument not specified: \`${argument.name}\``);
+      }
+      return;
+    }
+
+    if (argument.values) {
+      const values =
+        typeof argument.values === "function"
+          ? argument.values(args[index], tokens)
+          : argument.values;
+      const invalidValue = inputArgs.find((value) => !values.includes(value));
+      if (invalidValue) {
         throw new Error(
-          `Failed to parse ${kind}: \`${item.name}\`${
-            e.message ? `: ${e.message}` : ""
-          }`
+          `Incorrect argument value given: \`${invalidValue}\` ` +
+            `(possible values: ${values.join(", ")})`
         );
       }
-    };
-  }
-}
+    }
+
+    if (argument.parse) {
+      const parse = createParse("argument", argument);
+      parsed[argument.name] = argument.multiple
+        ? inputArgs.map((token) => parse(token, tokens))
+        : parse(inputArgs[0], tokens);
+    } else {
+      parsed[argument.name] = argument.multiple ? inputArgs : inputArgs[0];
+    }
+  });
+  return parsed;
+};
+
+const parseOptions = (
+  definitions: Option[] | undefined,
+  options: string[],
+  tokens: string[]
+) => {
+  const parsed: Record<string, unknown> = {};
+  definitions?.forEach((option) => {
+    const index = options.findIndex(
+      (value) => value === `--${option.name}` || value === `-${option.short}`
+    );
+    if (index === -1) return;
+
+    if (!option.takeValue) {
+      parsed[option.name] = true;
+      return;
+    }
+
+    const value = options.at(index + 1);
+    if (!value) throw new Error(`Option value not given: \`${option.name}\``);
+    if (option.values) {
+      const values = PgCommon.callIfNeeded(option.values);
+      if (!values.includes(value)) {
+        throw new Error(
+          `Incorrect option value given: \`${value}\` ` +
+            `(possible values: ${values.join(", ")})`
+        );
+      }
+    }
+    parsed[option.name] = option.parse
+      ? createParse("option", option)(value, tokens)
+      : value;
+  });
+  return parsed;
+};
+
+const createParse = <T extends Arg | Option>(
+  kind: "argument" | "option",
+  item: T
+): NonNullable<T["parse"]> => {
+  if (!item.parse) throw new Error(`Parse not defined: ${item.name}`);
+  const parse = item.parse as (token: string, tokens: string[]) => unknown;
+  return ((token: string, tokens: string[]) => {
+    try {
+      return parse(token, tokens);
+    } catch (error: any) {
+      throw new Error(
+        `Failed to parse ${kind}: \`${item.name}\`${
+          error.message ? `: ${error.message}` : ""
+        }`
+      );
+    }
+  }) as NonNullable<T["parse"]>;
+};
